@@ -1,0 +1,589 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script src="./axios.min.js"></script>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@1.4/lib/theme-default/index.css">
+    <!-- 引入组件库 -->
+    <script src="https://unpkg.com/element-ui@1.4/lib/index.js"></script>
+    <script type='text/javascript' src='http://cdn.staticfile.org/jquery/2.1.1/jquery.min.js'></script>
+    <script type="text/javascript" src="http://cdn.staticfile.org/jquery.qrcode/1.0/jquery.qrcode.min.js"></script>
+    <meta name="viewport" content="width=width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0,minimum-scale=1.0">
+    <script type="text/javascript" src="http://g.tbcdn.cn/mtb/lib-flexible/0.3.2/??flexible_css.js,flexible.js"></script>
+    <title>补单</title>
+</head>
+<body>
+    <div id="app">
+        <template style="background-color:#FAFAFA">
+            <div class="head_le" style="height:1rem;background:rgba(0,0,0,0.8)"></div>
+            <div style="margin:10px auto;width:95%;">
+                <div style="height:0.6rem;font-size:15px;" class="flex-container">
+                    <div>总金额: {{totalCurrencyPrice}}; </div>
+                    <div>成功金额: {{totalCurrencyPaid}}; </div>
+                    <div>成功金额率: {{(paidCurrencyPercentage*100).toFixed(1)}}%; </div>
+                </div>
+                <div style="height:0.6rem;font-size:15px;" class="flex-container">
+
+                    <div>总笔数: {{totalNumber}}; </div>
+                    <div>成功笔数:{{paidNumber}}; </div>
+                    <div>笔数成功率:{{(paidNumberPercentage*100).toFixed(1)}}%; </div>
+                </div>
+            </div>
+            <audio id="audio" src="./video/3.mp3"></audio>
+            <el-dialog title="个人信息" :visible.sync="visible" style="width:40%;margin:0 auto">
+                <div>上级ID:<el-button type="text" slot="reference" @click="ShowRelation(userprofileData.parentUserId)">{{userprofileData.parentUserId}}</el-button></div>
+                <div>姓名:{{userprofileData.realName}}</div>
+                <div>{{userprofileData.userName}}</div>
+                <div id="qr">
+                </div>
+            </el-dialog>
+            <el-dialog title="交易记录" :visible.sync="logTableVisible" :modal="false">
+                <el-table :data="logTableData" :key="linkId">
+                    <el-table-column property="amount" label="应收金额" width="150"></el-table-column>
+                    <el-table-column property="receiverAccountNumber" label="收款账号" width="200"></el-table-column>
+                    <el-table-column property="status" label="状态" width="150"></el-table-column>
+                    <el-table-column width="300" label="时间">
+                        <template slot-scope="scope">
+                            {{scope.row.transactionTime.substring(0,10)}}   {{scope.row.transactionTime.substring(11,19)}}
+                        </template>
+                    </el-table-column>
+                </el-table>
+                <div class="block">
+                    <el-pagination @current-change="handleNextChange"
+                                   :page-size="20"
+                                   :current-page.sync="currentPage"
+                                   layout="total, prev, pager, next"
+                                   :total=totalLogNumber>
+                    </el-pagination>
+                </div>
+            </el-dialog>
+            <div style="width:95%;margin:10px auto;padding-top:10px; box-shadow:2px 2px 5px #333333">
+
+                <div style="height:0.75rem;width:95%;margin-bottom:10px;margin-left:10px;" class="flex-container">
+                    <el-select v-model="merchantId" @visible-change="Getmerchants($event)" @change="GetPaymentDetailByFilter" placeholder="请选择商户">
+                        <el-option v-for="item in options"
+                                   :key="item.name"
+                                   :label="item.name"
+                                   :value="item.merchantAgentId">
+                        </el-option>
+                    </el-select>
+                    <el-select style="margin-left:10px;" v-model="orderStatus" @change="GetPaymentDetailByFilter" placeholder="请选择订单状态">
+                        <el-option v-for="item in orderStatuss"
+                                   :key="item.value"
+                                   :label="item.label"
+                                   :value="item.value">
+                        </el-option>
+                    </el-select>
+
+                    <el-date-picker v-model="startTime"
+                                    type="datetime"
+                                    style="margin-left:10px;"
+                                    :clearable=false
+                                    @change="GetPaymentDetailByFilter"
+                                    value-format="yyyy-MM-dd HH:mm:ss"
+                                    default-time="00:00:00"
+                                    placeholder="请选择开始时间">
+                    </el-date-picker>
+
+                    <el-date-picker v-model="endTime"
+                                    type="datetime"
+                                    style="margin-left:10px;"
+                                    :clearable=false
+                                    @change="GetPaymentDetailByFilter"
+                                    value-format="yyyy-MM-dd HH:mm:ss"
+                                    default-time="23:59:59"
+                                    placeholder="请选择结束时间">
+                    </el-date-picker>
+
+                    <el-input style="width: 4rem;margin-left:10px;" v-model="orderId" placeholder="请输入订单号"></el-input>
+                    <el-input style="width: 4rem;margin-left:10px;" v-model="receivedUserName" placeholder="请输入收款手机号"></el-input>
+                    <el-input style="width: 4rem;margin-left:10px;" v-model="receivedAccountName" placeholder="请输入收款账号"></el-input>
+                    <el-button style="margin-left: 5px;height:0.75rem;" @click="GetPaymentDetailByFilter()">搜索</el-button>
+                    <el-button style="margin-left: 5px;height:0.75rem;" @click="handEmpty()">清空选项</el-button>
+                </div>
+
+
+                <el-table :data="tableData"
+                          stripe
+                          border
+                          :key="keyid"
+                          style="width: 100%">
+                    <el-table-column prop="id"
+                                     width="80"
+                                     label="ID">
+                    </el-table-column>
+                    <el-table-column prop="orderNumber"
+                                     width="180"
+                                     label="订单号">
+                    </el-table-column>
+                    <el-table-column prop="merchantName"
+                                     label="商户">
+                    </el-table-column>
+
+                    <el-table-column prop="currencyToCharge"
+                                     label="应支付金额">
+                    </el-table-column>
+                    <el-table-column prop="currencyPaid"
+                                     label="已支付金额">
+                    </el-table-column>
+                    <el-table-column label="支付状态">
+                        <template slot-scope="scope">
+
+                            <div :style="{color:(scope.row.status<4?(scope.row.status==3?'red':'black'):'green')}">{{scope.row.status | statusjazz}}</div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="收款手机号">
+                        <template slot-scope="scope">
+                            <el-button type="text" slot="reference" @click="ShowRelation(scope.row.userId);">{{scope.row.userName}}</el-button>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="payRobotAccountName"
+                                     label="收款账号">
+                        <template slot-scope="scope">
+                            <el-button type="text" slot="reference" @click="ShowBankTransferLogs(scope.row.payRobotAccountName);">{{scope.row.payRobotAccountName}}</el-button>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="createTime"
+                                     label="订单创建时间">
+                        <template slot-scope="scope">
+                            {{scope.row.createTime.substring(0,10)}} {{scope.row.createTime.substring(11,19)}}
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作">
+                        <template slot-scope="scope">
+                            <el-input v-model="scope.row.currencyPaid" placeholder="支付金额"></el-input>
+                            <el-button @click="setCurrencyPaid(scope.row)" type="text">设置支付金额</el-button>
+                            <el-button v-if="scope.row.status==2" @click="handleClick(scope.row.id,scope.row.currencyToCharge,scope.row.orderNumber)" type="text">释放</el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+                <div class="block">
+                    <el-pagination @current-change="handleCurrentChange"
+                                   :page-size="20"
+                                   layout="total, prev, pager, next"
+                                   :total=totalNumber>
+                    </el-pagination>
+                </div>
+
+            </div>
+
+        </template>
+    </div>
+</body>
+<script>
+    new Vue({
+        el: '#app',
+        data: {
+            totalCurrencyPrice: "",
+            totalCurrencyPaid: "",
+            paidCurrencyPercentage: "",
+            totalNumber: "",
+            paidNumber: "",
+            paidNumberPercentage: "",
+            // 订单状态
+            orderStatus: "",
+            // 通道
+            tradingChannel: "",
+            //开始时间
+            startTime: "",
+            //结束时间
+            endTime: "",
+            //支付方式
+            payMethod: "AlipayPersonalUnfixed",
+            // 商户Id
+            merchantId: "",
+            // 收款账号
+            receivedAccountName: "",
+            // 订单号
+            orderId: "",
+            // 收款人手机号
+            receivedUserName: "",
+            originalData: "",
+            pageNumber: 1,
+            pageSize: 20,
+            payMethods: [{ value: "AlipayPersonalUnfixed", label: "支付宝" }, { value: "WechatPay", label: "微信" }],
+            orderStatuss: [{ value: 2, label: "等待支付" }, { value: 3, label: "取消支付" }, { value: 4, label: "支付成功" }],
+            options: undefined,
+            tableData: [],
+            selectList: [],
+            totalNumber: 0,
+            myInterval: "",
+            menuk: 1,
+            keyid: 0,
+            linkId: 0,
+            userprofileData: [],
+            appAlipayAccount: [],
+            dialogVisible: false,
+            visible: false,
+            logTableVisible: false,
+            logTableData: [],
+            pagelogNumber: 1,
+            receiverAccountNumber: 0,
+            totalLogNumber: 0,
+            currentPage: 1
+
+        },
+        mounted() {
+            this.myInterval = window.setInterval(() => {
+                setTimeout(() => {
+                    this.GetPaymentDetailByFilter() //调用接口的方法
+                }, 1)
+            }, 30000);
+            this.GetPaymentDetailByFilter();
+        },
+        watch: {
+            'keyid': function () {
+                this.aplayAudio()
+            }
+        },
+        filters: {
+
+
+
+            paidCurrencyPercentageSub(val) {
+                var a = (val * 100).toFixed(1)
+                return a
+            },
+            statusjazz(val) {
+                if (val == 2) {
+                    return "等待支付"
+                } else if (val == 3) {
+                    return "取消支付"
+                } else if (val == 4) {
+                    return "支付成功"
+                }
+            }
+        },
+        destroyed: function () {
+            clearInterval(this.myInterval)
+        },
+        methods: {
+            handclose() {
+                console.log(11111);
+                this.pagelogNumber = 1;
+            },
+            ShowBankTransferLogs: async function (val) {
+                this.currentPage = 1
+                var query = window.location.search.substring(1);
+
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("receiverAccountNumber", val);
+                formData.append("pageNumber", this.pagelogNumber);
+                formData.append("pageSize", 20);
+                let result = (await axios({
+                    method: "post",
+                    url: "api/Channels/GetBankTransferLogs",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })).data
+                this.logTableData = result.bankTransferLogs;
+                this.totalLogNumber = result.totalNumber;
+                this.receiverAccountNumber = val;
+                this.linkId = result.bankTransferLogs[0].id;
+                this.logTableVisible = true;
+
+
+            },
+            handEmpty() {
+                // 订单状态
+                this.orderStatus = "";
+                //开始时间
+                this.startTime = "";
+                //结束时间
+                this.endTime = "";
+                // 商户Id
+                this.merchantId = "";
+                // 收款账号
+                this.receivedAccountName = "";
+                // 订单号
+                this.orderId = "";
+                // 收款人手机号
+                this.receivedUserName = "";
+
+            },
+            aplayAudio() {
+                const audio = document.getElementById('audio');
+                audio.play();
+            },
+            handleNextChange: async function (val) {
+                var query = window.location.search.substring(1);
+
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("receiverAccountNumber", this.receiverAccountNumber);
+                formData.append("pageNumber", val);
+                formData.append("pageSize", 20);
+                let result = (await axios({
+                    method: "post",
+                    url: "api/Channels/GetBankTransferLogs",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })).data
+                this.logTableData = result.bankTransferLogs;
+                this.totalLogNumber = result.totalNumber;
+                this.pagelogNumber = 1;
+
+            },
+            handleCurrentChange(val) {
+                this.pageNumber = val;
+                this.GetPaymentDetailByFilter();
+            },
+            ShowRelation: async function (userId) {
+                var query = window.location.search.substring(1);
+
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("userId", userId);
+                let result = (await axios({
+                    method: "post",
+                    url: "api/Identity/GetUserProfileByUserId",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })).data
+                this.userprofileData = result.userProfile;
+                this.appAlipayAccount.splice(0, 1, result.appAlipayAccount.imageTags[0].tagImage);
+                $('#qr').empty();
+                $('#qr').qrcode({ width: 150, height: 150, text: this.appAlipayAccount[0] });
+                this.dialogVisible = true;
+                this.visible = true
+
+
+            },
+            releaseButton: async function (val) {
+                var query = window.location.search.substring(1);
+
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("paymentId", val);
+                await axios({
+                    method: "post",
+                    url: "api/Channels/ReleaseEscrow",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })
+            },
+            doSetCurrencyPaid: async function (payment) {
+                var query = window.location.search.substring(1);
+
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("paymentId", payment.id);
+                formData.append("currencyPaid", payment.currencyPaid);
+                await axios({
+                    method: "post",
+                    url: "api/Channels/ManuallySetCurrencyPaid",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })
+            },
+            //获取商户列表
+            Getmerchants: async function (call) {
+                console.log(call)
+                if (call) {
+                    var query = window.location.search.substring(1);
+
+                    var token = ""
+                    var vars = query.split("&");
+                    for (var i = 0; i < vars.length; i++) {
+                        var pair = vars[i].split("=");
+                        if (pair[0] == "userId") {
+                            userid = pair[1];
+                        }
+                        else if (pair[0] == "token") {
+                            token = pair[1];
+                        }
+                    }
+                    let result = (await axios({
+                        method: "post",
+                        url: "api/Channels/GetMerchants",
+                        config: {
+                            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                        },
+                        headers: { "Authorization": "Bearer " + token }
+                    })).data
+                    this.options = result
+                }
+            },
+            GetPaymentDetailByFilter: async function () {
+
+                var query = window.location.search.substring(1);
+                var userid = ""
+                var token = ""
+                var vars = query.split("&");
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split("=");
+                    if (pair[0] == "userId") {
+                        userid = pair[1];
+                    }
+                    else if (pair[0] == "token") {
+                        token = pair[1];
+                    }
+                }
+                let formData = new FormData();
+                formData.append("merchantId", this.merchantId);
+                formData.append("payMethod", this.payMethod);
+                formData.append("startTime", this.startTime);
+                formData.append("endTime", this.endTime);
+                formData.append("OrderNumber", this.orderId);
+                formData.append("receivedUserName", this.receivedUserName);
+                formData.append("receivedAccountName", this.receivedAccountName);
+                formData.append("paymentStatus", this.orderStatus);
+                formData.append("pageNumber", this.pageNumber);
+                formData.append("pageSize", this.pageSize);
+                let result = (await axios({
+                    method: "post",
+                    url: "api/Channels/GetPaymentDetailByFilter",
+                    data: formData,
+                    config: {
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+                    },
+                    headers: { "Authorization": "Bearer " + token }
+                })).data
+                this.tableData = result.payments;
+                this.totalCurrencyPrice = result.totalCurrencyPrice;
+                this.totalCurrencyPaid = result.totalCurrencyPaid;
+                this.paidCurrencyPercentage = result.paidCurrencyPercentage;
+                this.totalNumber = result.totalNumber;
+                this.paidNumber = result.paidNumber;
+                this.paidNumberPercentage = result.paidNumberPercentage;
+                this.totalNumber = result.totalNumber;
+                this.keyid = result.payments[0].id;
+            },
+            handleClick(row, amount, orderNumber) {
+                this.$confirm('此操作将进行释放,请确认,金额,单号是否正确!!', "金额:" + amount + "元," + "订单号:" + orderNumber, {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                }).then(() => {
+                    //释放操作
+                    this.releaseButton(row);
+                    this.GetPaymentDetailByFilter();
+                    this.$message({
+                        type: 'success',
+                        message: '释放成功!'
+                    });
+                }).catch(() => {
+                    this.$message({
+                        type: 'info',
+                        message: '已取消释放'
+                    });
+                });
+            },
+            setCurrencyPaid(row) {
+                this.$confirm('此操作将进行设置支付金额,请确认。', "金额:" + row.currencyPaid + "元," + "订单号:"
+                    + row.orderNumber, {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        this.doSetCurrencyPaid(row);
+                        this.GetPaymentDetailByFilter();
+                        this.$message({
+                            type: 'success',
+                            message: '释放成功!'
+                        });
+                    }).catch(() => {
+                        this.$message({
+                            type: 'info',
+                            message: '已取消释放'
+                        });
+                    });
+            }
+        }
+    })
+</script>
+<script>
+
+</script>
+<style>
+
+    * {
+        margin: 0;
+        padding: 0;
+    }
+
+    .head_le {
+        color: white;
+        font-size: 0.5rem;
+    }
+
+    .flex-container {
+        display: -webkit-flex;
+        display: flex;
+        -webkit-flex-direction: row;
+        flex-direction: row;
+    }
+
+    body {
+        text-align: center
+    }
+</style>
+</html>
